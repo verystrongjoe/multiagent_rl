@@ -1,13 +1,13 @@
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
-from rl.model.ac_network import ActorNetwork, CriticNetwork
-from rl.agent.ddpg import Trainer
+from rl2.model.ac_network import ActorNetwork, CriticNetwork
+from rl2.agent.ddpg import Trainer
 import numpy as np
 import torch
 import time
-from rl import arglist
+from rl2 import arglist
 import pickle
-from rl.replay_buffer import SequentialMemory, MemoryBuffer
+from rl2.replay_buffer import SequentialMemory, MemoryBuffer
 
 # load scenario from script
 scenario_name = 'simple_spread'
@@ -17,21 +17,28 @@ scenario = scenarios.load(scenario_name + ".py").Scenario()
 world = scenario.make_world()
 
 # create multiagent environment
-env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+env = MultiAgentEnv(scenario_name, world, scenario.reset_world, scenario.reward, scenario.observation)
+
 print('observation shape: ', env.observation_space)
 print('action shape: ', env.action_space)
 env.discrete_action_input = True
 env.discrete_action_space = False
 
-actor = ActorNetwork(input_dim=18, out_dim=5)
-critic = CriticNetwork(input_dim=18 + 5, out_dim=1)
+
+import torch as th
+device = th.device("cuda" if th.cuda.is_available() else "cpu")  # if gpu is to be used
+
+
+
+actor = ActorNetwork(input_dim=18, out_dim=5).to(device)
+critic = CriticNetwork(input_dim=18 + 5, out_dim=1).to(device)
 memory = MemoryBuffer(size=1000000)
 agent = Trainer(actor, critic, memory)
 
 # def run():
 history = []
 history_rewards = []
-episode_rewards = []  # sum of rewards for all agents
+episode_rewards = [0.0]  # sum of rewards for all agents
 episode_loss = []
 obs = env.reset()
 episode_step = 0
@@ -40,6 +47,8 @@ nb_episode = 0
 
 verbose_step = False
 verbose_episode = True
+
+t_start = time.time()
 
 print('Starting iterations...')
 while True:
@@ -60,7 +69,8 @@ while True:
     # obs, actions, rewards, new_obs, done
     agent.memory.add(obs, actions, rewards, new_obs, done or terminal)
     obs = new_obs
-    episode_rewards.append(rewards)
+    # episode_rewards.append(rewards)
+    episode_rewards[-1] += rewards
 
     # for displaying learned policies
     if arglist.display:
@@ -73,6 +83,7 @@ while True:
         obs = env.reset()
         episode_step = 0
         nb_episode += 1
+        episode_rewards.append(0.0)
 
     # increment global step counter
     train_step += 1
@@ -91,15 +102,21 @@ while True:
         print('step: {}, actor_loss: {}, critic_loss: {}'.format(train_step, loss[0], loss[1]))
 
     elif verbose_episode:
-        if done or terminal:
-            episode_loss = np.array(episode_loss)
-            print('episode: {episode}, step: {step}, reward: {reward:.2f}'.format(
-                episode=nb_episode, step=train_step, reward=rewards))
+        if (done or terminal) and len(episode_rewards) % arglist.save_rate == 0:
+            # episode_loss = np.array(episode_loss)
+            # print('episode: {episode}, step: {step}, reward: {reward:.2f}'.format(
+            #     episode=nb_episode, step=train_step, reward=rewards))
+            print('episode: {episode}, step: {step}, mean episode reward: {reward:.2f}, time : {time}'.format(
+                episode=nb_episode, step=train_step, reward=3*np.mean(episode_rewards[-1*arglist.save_rate:][:-1]),
+                time=round(time.time()-t_start, 3)
+            ))
+
 
             history.append(np.nansum(episode_rewards))
             history_rewards.append(rewards)
-            episode_rewards = []
+            # episode_rewards = []
             episode_loss = []
+            t_start = time.time()
 
     # saves final episode reward for plotting training curve later
     if nb_episode > arglist.num_episodes:

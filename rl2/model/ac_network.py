@@ -76,8 +76,10 @@ class CriticNetwork(nn.Module):
         self.nonlin = F.relu
         self.dense1 = TimeDistributed(nn.Linear(input_dim, 64))
         # return sequence is not exist in pytorch. Instead, output will return with first dimension for sequences.
-        self.lstm = nn.LSTM(64, 64, num_layers=1,
-                            batch_first=True, bidirectional=False)
+        self.lstm = nn.LSTM(64, 64,
+                            num_layers=1,
+                            batch_first=True,
+                            bidirectional=False)
         self.dense2 = nn.Linear(64, out_dim)
 
     def forward(self, obs, action):
