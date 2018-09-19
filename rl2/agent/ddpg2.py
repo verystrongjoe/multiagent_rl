@@ -1,4 +1,3 @@
-# reference: https://github.com/vy007vikas/PyTorch-ActorCriticRL/blob/master/train.py
 from __future__ import division
 import torch
 import torch.nn.functional as F
@@ -27,14 +26,12 @@ class Trainer:
             else torch.device('cpu')
 
         self.iter = 0
-        self.actor = actor
-        self.target_actor = copy.deepcopy(actor)
-        self.target_actor.to(device)
+        self.actor = actor.to(device)
+        self.target_actor = copy.deepcopy(actor).to(device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), arglist.learning_rate)
 
-        self.critic = critic
-        self.target_critic = copy.deepcopy(critic)
-        self.target_critic.to(device)
+        self.critic = critic.to(device)
+        self.target_critic = copy.deepcopy(critic).to(device)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), arglist.learning_rate)
 
         self.memory = memory
@@ -91,7 +88,7 @@ class Trainer:
         :param state: state (Numpy array)
         :return: sampled action (Numpy array)
         """
-        state = torch.from_numpy(state)
+        state = torch.from_numpy(state).to(self.device)
         action = self.target_actor.forward(state).detach()
         return action.data.numpy()
 
@@ -120,22 +117,22 @@ class Trainer:
         s2 = self.process_obs(s2)
         d = self.process_done(d)
 
-        s1 = torch.from_numpy(s1)
-        a1 = torch.from_numpy(a1)
-        r1 = torch.from_numpy(r1)
-        s2 = torch.from_numpy(s2)
-        d = torch.from_numpy(d)
+        s1 = torch.from_numpy(s1).to(device)
+        a1 = torch.from_numpy(a1).to(device)
+        r1 = torch.from_numpy(r1).to(device)
+        s2 = torch.from_numpy(s2).to(device)
+        d = torch.from_numpy(d).to(device)
 
         # ---------------------- optimize critic ----------------------
         # Use target actor exploitation policy here for loss evaluation
         a2 = self.target_actor.forward(s2).detach()
         q_next = torch.squeeze(self.target_critic.forward(s2, a2).detach())
         # y_exp = r + gamma*Q'( s2, pi'(s2))
-        y_expected = r1 + GAMMA * q_next.cpu() * (1. - d)
+        y_expected = r1 + GAMMA * q_next * (1. - d)
         # y_pred = Q( s1, a1)
         y_predicted = torch.squeeze(self.critic.forward(s1, a1))
         # compute critic loss, and update the critic
-        loss_critic = F.smooth_l1_loss(y_predicted.cpu(), y_expected.cpu())
+        loss_critic = F.smooth_l1_loss(y_predicted, y_expected).to(self.device)
         self.critic_optimizer.zero_grad()
         loss_critic.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)

@@ -1,13 +1,16 @@
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
 from rl2.model.ac_network import ActorNetwork, CriticNetwork
-from rl2.agent.ddpg import Trainer
+from rl2.agent.ddpg2 import Trainer
 import numpy as np
 import torch
 import time
 from rl2 import arglist
 import pickle
 from rl2.replay_buffer import SequentialMemory, MemoryBuffer
+
+
+
 
 # load scenario from script
 scenario_name = 'simple_spread'
@@ -24,9 +27,13 @@ print('action shape: ', env.action_space)
 env.discrete_action_input = True
 env.discrete_action_space = False
 
-
+import os
 import torch as th
 device = th.device("cuda" if th.cuda.is_available() else "cpu")  # if gpu is to be used
+
+
+th.backends.cudnn.benchmark=True
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 
 
@@ -110,8 +117,6 @@ while True:
                 episode=nb_episode, step=train_step, reward=3*np.mean(episode_rewards[-1*arglist.save_rate:][:-1]),
                 time=round(time.time()-t_start, 3)
             ))
-
-
             history.append(np.nansum(episode_rewards))
             history_rewards.append(rewards)
             # episode_rewards = []
@@ -126,19 +131,3 @@ while True:
 np.save('history_rewards.npy', history_rewards)
 np.save('history.npy', history)
 
-import numpy as np
-from matplotlib import pyplot as plt
-history_rewards = np.load('experiments/history_rewards.npy')
-
-history_rewards.shape
-plt.plot(history_rewards)
-plt.show()
-
-r = []
-for i in range(len(history_rewards)//1000):
-    x = history_rewards[(i * 1000):(i * 1000)+1000]
-    r.append(np.mean(x))
-
-r = np.array(r)
-plt.plot(r)
-plt.show()
