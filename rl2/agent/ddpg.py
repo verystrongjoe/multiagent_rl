@@ -12,6 +12,9 @@ arglist.batch_size = 128
 GAMMA = 0.95
 TAU = 0.001
 
+import torch as th
+device = th.device("cuda" if th.cuda.is_available() else "cpu")  # if gpu is to be used
+
 
 class Trainer:
     def __init__(self, actor, critic, memory):
@@ -97,9 +100,9 @@ class Trainer:
         :return: sampled action (Numpy array)
         """
         state = np.expand_dims(state, axis=0)
-        state = torch.from_numpy(state)
+        state = torch.from_numpy(state).to(device)
         action = self.actor.forward(state).detach()
-        new_action = action.data.numpy()  # + (self.noise.sample() * self.action_lim)
+        new_action = action.data.cpu().numpy()  # + (self.noise.sample() * self.action_lim)
         return new_action
 
     def optimize(self):
@@ -126,11 +129,11 @@ class Trainer:
         a2 = self.target_actor.forward(s2).detach()
         q_next = torch.squeeze(self.target_critic.forward(s2, a2).detach())
         # y_exp = r + gamma*Q'( s2, pi'(s2))
-        y_expected = r1 + GAMMA * q_next * (1. - d)
+        y_expected = r1 + GAMMA * q_next.cpu() * (1. - d)
         # y_pred = Q( s1, a1)
         y_predicted = torch.squeeze(self.critic.forward(s1, a1))
         # compute critic loss, and update the critic
-        loss_critic = F.smooth_l1_loss(y_predicted, y_expected)
+        loss_critic = F.smooth_l1_loss(y_predicted.cpu(), y_expected.cpu())
         self.critic_optimizer.zero_grad()
         loss_critic.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)

@@ -3,6 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+import torch as th
+device = th.device("cuda" if th.cuda.is_available() else "cpu")  # if gpu is to be used
+
+
 class TimeDistributed(nn.Module):
     def __init__(self, module):
         super(TimeDistributed, self).__init__()
@@ -13,7 +17,7 @@ class TimeDistributed(nn.Module):
             return self.module(x)
         t, n = x.size(0), x.size(1)
         # merge batch and seq dimensions
-        x_reshape = x.contiguous().view(t * n, x.size(2))
+        x_reshape = x.contiguous().view(t * n, x.size(2)).to(device)
         y = self.module(x_reshape)
         # We have to reshape Y
         y = y.contiguous().view(t, n, y.size()[1])
@@ -89,7 +93,7 @@ class CriticNetwork(nn.Module):
         Outputs:
             out (PyTorch Matrix): Output of network (actions, values, etc)
         """
-        obs_act = torch.cat((obs, action), dim=-1)
+        obs_act = torch.cat((obs.to(device), action.to(device)), dim=-1)
         out = F.relu(self.dense1(obs_act))
         out, _ = self.lstm(out, None)
         out = F.relu(out[:, -1, :])
