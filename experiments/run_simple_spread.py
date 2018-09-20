@@ -1,133 +1,242 @@
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
 from rl2.model.ac_network import ActorNetwork, CriticNetwork
-from rl2.agent.ddpg2 import Trainer
+from rl2.agent.ddpg import Trainer
 import numpy as np
 import torch
 import time
 from rl2 import arglist
 import pickle
 from rl2.replay_buffer import SequentialMemory, MemoryBuffer
+# torch.set_default_tensor_type('torch.cuda.FloatTensor')
+import experiments.timer as timer
 
+t_run = timer.Timer()
+t_1 = timer.Timer()
+t_2 = timer.Timer()
+t_3 = timer.Timer()
+t_4 = timer.Timer()
+t_5 = timer.Timer()
+t_6 = timer.Timer()
+t_7 = timer.Timer()
+t_8 = timer.Timer()
+t_9 = timer.Timer()
 
+t_3_1 = timer.Timer()
+t_3_2 = timer.Timer()
+t_3_3 = timer.Timer()
+t_3_4 = timer.Timer()
 
+t_6_1 = timer.Timer()
+t_6_2 = timer.Timer()
+t_6_3 = timer.Timer()
+t_6_4 = timer.Timer()
+t_6_5 = timer.Timer()
 
-# load scenario from script
-scenario_name = 'simple_spread'
-scenario = scenarios.load(scenario_name + ".py").Scenario()
+def runtime(f):
+    def wrapper(*args, **kwargs):
+        import timeit
+        start = timeit.default_timer()
+        v = f(*args, **kwargs)
+        end = timeit.default_timer()
+        print('executed time  of f {} : {}'.format(f, round(end - start, 4)))
+        # return f(*a, **kwargs)
+        return v
+    return wrapper
 
-# create world
-world = scenario.make_world()
+@runtime
+def run(cnt):
 
-# create multiagent environment
-env = MultiAgentEnv(scenario_name, world, scenario.reset_world, scenario.reward, scenario.observation)
+    t_1.tic()
+    # load scenario from script
+    scenario_name = 'simple_spread'
+    scenario = scenarios.load(scenario_name + ".py").Scenario()
 
-print('observation shape: ', env.observation_space)
-print('action shape: ', env.action_space)
-env.discrete_action_input = True
-env.discrete_action_space = False
+    # create world
+    world = scenario.make_world()
 
-import os
-import torch as th
-device = th.device("cuda" if th.cuda.is_available() else "cpu")  # if gpu is to be used
+    # create multiagent environment
+    env = MultiAgentEnv(scenario_name, world, scenario.reset_world, scenario.reward, scenario.observation)
+    print('observation shape: ', env.observation_space)
+    print('action shape: ', env.action_space)
+    env.discrete_action_input = True
+    env.discrete_action_space = False
 
+    actor = ActorNetwork(input_dim=18, out_dim=5)
+    critic = CriticNetwork(input_dim=18 + 5, out_dim=1)
+    memory = MemoryBuffer(size=1000000)
+    agent = Trainer(actor, critic, memory)
 
-th.backends.cudnn.benchmark=True
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+    # def run():
+    episode_rewards = [0.0]  # sum of rewards for all agents
+    agent_rewards = [[0.0] for _ in range(env.n)]  # individual agent reward
+    final_ep_rewards = []  # sum of rewards for training curve
+    final_ep_ag_rewards = []  # agent rewards for training curve
+    terminal_reward = []
 
+    # history = []
+    # history_rewards = []
+    # episode_rewards = []  # sum of rewards for all agents
+    episode_loss = []
+    obs = env.reset()
+    episode_step = 0
+    train_step = 0
+    nb_episode = 0
 
+    verbose_step = False
+    verbose_episode = True
+    t_start = time.time()
+    t_1.toc()
 
-actor = ActorNetwork(input_dim=18, out_dim=5).to(device)
-critic = CriticNetwork(input_dim=18 + 5, out_dim=1).to(device)
-memory = MemoryBuffer(size=1000000)
-agent = Trainer(actor, critic, memory)
+    print('Starting iterations...')
+    while True:
+        t_2.tic()
+        # get action
+        obs = agent.process_obs(obs)
+        t_2.toc()
 
-# def run():
-history = []
-history_rewards = []
-episode_rewards = [0.0]  # sum of rewards for all agents
-episode_loss = []
-obs = env.reset()
-episode_step = 0
-train_step = 0
-nb_episode = 0
+        t_3.tic() #todo: tuning
+        actions = agent.get_exploration_action(obs, t_3_1, t_3_2, t_3_3, t_3_4)
+        t_3.toc()
 
-verbose_step = False
-verbose_episode = True
+        t_4.tic()
+        actions = agent.process_action(actions)
+        t_4.toc()
 
-t_start = time.time()
+        # environment step
+        t_5.tic() #todo: tuning
+        new_obs, rewards, done, info = env.step(actions)
+        t_5.toc()
+        rewards = agent.process_reward(rewards)
+        rewards = np.mean(rewards)
+        episode_step += 1
+        done = all(done)
+        terminal = (episode_step >= arglist.max_episode_len)
 
-print('Starting iterations...')
-while True:
-    # get action
-    obs = agent.process_obs(obs)
-    actions = agent.get_exploration_action(obs)
-    actions = agent.process_action(actions)
+        # collect experience
+        # obs, actions, rewards, new_obs, done
+        agent.memory.add(obs, actions, rewards, new_obs, done or terminal)
+        obs = new_obs
+        # episode_rewards.append(rewards)
 
-    # environment step
-    new_obs, rewards, done, info = env.step(actions)
-    rewards = agent.process_reward(rewards)
-    rewards = np.mean(rewards)
-    episode_step += 1
-    done = all(done)
-    terminal = (episode_step >= arglist.max_episode_len)
+        for i, rew in enumerate([rewards] * env.n):
+            episode_rewards[-1] += rew
+            agent_rewards[i][-1] += rew
 
-    # collect experience
-    # obs, actions, rewards, new_obs, done
-    agent.memory.add(obs, actions, rewards, new_obs, done or terminal)
-    obs = new_obs
-    # episode_rewards.append(rewards)
-    episode_rewards[-1] += rewards
+        # # for displaying learned policies
+        # if arglist.display:
+        #     if done or terminal:
+        #         time.sleep(0.1)
+        #         env.render()
+        #     # continue
 
-    # for displaying learned policies
-    if arglist.display:
         if done or terminal:
-            time.sleep(0.1)
-            env.render()
-        # continue
+            obs = env.reset()
+            episode_step = 0
+            nb_episode += 1
+            episode_rewards.append(0)
+            terminal_reward.append(np.mean(rewards))
 
-    if done or terminal:
-        obs = env.reset()
-        episode_step = 0
-        nb_episode += 1
-        episode_rewards.append(0.0)
+        # increment global step counter
+        train_step += 1
 
-    # increment global step counter
-    train_step += 1
+        t_6.tic() #todo: tuning
+        # update all trainers, if not in display or benchmark mode
+        loss = [np.nan, np.nan]
+        if train_step > arglist.warmup_steps and episode_step % 100 == 0:
+            loss = agent.optimize(t_6_1, t_6_2,t_6_3,t_6_4,t_6_5)
+            t_7.tic()
+            loss = [loss[0].data.item(), loss[1].data.item()]
+            t_7.toc()
+        t_6.toc()
 
-    # update all trainers, if not in display or benchmark mode
-    loss = [np.nan, np.nan]
-    if train_step > arglist.warmup_steps:
-        loss = agent.optimize()
-        loss = [loss[0].data.item(), loss[1].data.item()]
+        episode_loss.append(loss)
 
-    episode_loss.append(loss)
+        if verbose_step:
+            if loss == [np.nan, np.nan]:
+                loss = ['--', '--']
+            print('step: {}, actor_loss: {}, critic_loss: {}'.format(train_step, loss[0], loss[1]))
 
-    if verbose_step:
-        if loss == [np.nan, np.nan]:
-            loss = ['--', '--']
-        print('step: {}, actor_loss: {}, critic_loss: {}'.format(train_step, loss[0], loss[1]))
+        elif verbose_episode:
+            if (done or terminal) and (len(episode_rewards) % arglist.save_rate == 0):
+                print("steps: {}, episodes: {}, mean episode reward: {}, reward: {}, time: {}".format(
+                    train_step, len(episode_rewards), round(np.mean(episode_rewards[-arglist.save_rate:]), 3),
+                    round(np.mean(terminal_reward), 3), round(time.time() - t_start, 3)))
+                terminal_reward = []
+                t_start = time.time()
+                # Keep track of final episode reward
+                final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
+                for rew in agent_rewards:
+                    final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
 
-    elif verbose_episode:
-        if (done or terminal) and len(episode_rewards) % arglist.save_rate == 0:
-            # episode_loss = np.array(episode_loss)
-            # print('episode: {episode}, step: {step}, reward: {reward:.2f}'.format(
-            #     episode=nb_episode, step=train_step, reward=rewards))
-            print('episode: {episode}, step: {step}, mean episode reward: {reward:.2f}, time : {time}'.format(
-                episode=nb_episode, step=train_step, reward=3*np.mean(episode_rewards[-1*arglist.save_rate:][:-1]),
-                time=round(time.time()-t_start, 3)
-            ))
-            history.append(np.nansum(episode_rewards))
-            history_rewards.append(rewards)
-            # episode_rewards = []
-            episode_loss = []
-            t_start = time.time()
+        # saves final episode reward for plotting training curve later
+        if nb_episode > arglist.num_episodes:
+            np.save('iter_{}_episode_rewards.npy'.format(cnt), episode_rewards)
 
-    # saves final episode reward for plotting training curve later
-    if nb_episode > arglist.num_episodes:
-        print('...Finished total of {} episodes.'.format(len(episode_rewards)))
-        break
+            rew_file_name = '' + arglist.exp_name + '{}_rewards.pkl'.format(cnt)
+            with open(rew_file_name, 'wb') as fp:
+                pickle.dump(final_ep_rewards, fp)
+            agrew_file_name = '' + arglist.exp_name + '{}_agrewards.pkl'.format(cnt)
+            with open(agrew_file_name, 'wb') as fp:
+                pickle.dump(final_ep_ag_rewards, fp)
+            print('...Finished total of {} episodes.'.format(len(episode_rewards)))
 
-np.save('history_rewards.npy', history_rewards)
-np.save('history.npy', history)
+            break
 
+    # np.save('history_rewards_{}.npy'.format(cnt), history_rewards)
+    # np.save('history_{}.npy'.format(cnt), history)
+
+
+if __name__ == '__main__':
+    for cnt in range(1):
+        torch.cuda.empty_cache()
+        torch.set_default_tensor_type('torch.FloatTensor')
+        t_run.tic()
+        run(cnt)
+        t_run.toc()
+        print('run time : {}'.format(t_run.total_time))
+        print('{} + {} + {} + {} + {} + {} + {} + {} + {}= {}'.format(t_1.total_time,
+                                              t_2.total_time,
+                                              t_3.total_time,
+                                              t_4.total_time,
+                                              t_5.total_time,
+                                              t_6.total_time,
+                                              t_7.total_time,
+                                              t_8.total_time,
+                                              t_9.total_time,
+                                              (t_1.total_time +
+                                                               t_2.total_time +
+                                                               t_3.total_time +
+                                                               t_4.total_time +
+                                               t_5.total_time +
+                                               t_6.total_time +
+                                               t_7.total_time +
+                                               t_8.total_time +
+                                               t_9.total_time
+                                               )))
+
+        print('{} + {} + {} + {} = {}'.format(t_3_1.total_time, t_3_2.total_time, t_3_3.total_time, t_3_4.total_time,
+                                              t_3_1.total_time + t_3_2.total_time + t_3_3.total_time + t_3_4.total_time))
+
+        print('{} + {} + {} + {} + {} = {}'.format(t_6_1.total_time, t_6_2.total_time, t_6_3.total_time, t_6_4.total_time, t_6_5.total_time,
+                                                  t_6_1.total_time + t_6_2.total_time + t_6_3.total_time + t_6_4.total_time + t_6_5.total_time))
+
+##############################
+'''
+import numpy as np
+from matplotlib import pyplot as plt
+history_rewards = np.load('experiments/history_rewards.npy')
+
+history_rewards.shape
+plt.plot(history_rewards)
+plt.show()
+
+r = []
+for i in range(len(history_rewards)//1000):
+    x = history_rewards[(i * 1000):(i * 1000)+1000]
+    r.append(np.mean(x))
+
+r = np.array(r)
+plt.plot(r)
+plt.show()
+'''

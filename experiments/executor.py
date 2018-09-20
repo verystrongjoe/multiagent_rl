@@ -28,6 +28,7 @@ for s in range(len(keys)):
         for combination in itertools.product(*ll):
             if len(combination) != 0:
                 print(np.concatenate(combination).tolist())
+                # --scenario simple_spread --batch-size 128 --num-episodes 25000 --exp-name test --save-rate 1
                 subargs = [sys.executable, 'train.py', '--scenario', 'simple_spread', '--batch-size', '128',
                            '--num-episodes', '25000', '--save-rate', '1'] + np.concatenate(combination).tolist()
                 subprocess.call(subargs, shell=True)
