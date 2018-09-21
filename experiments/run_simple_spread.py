@@ -19,7 +19,7 @@ def parse_args():
 
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Environment
-    # parser.add_argument("--scenario", type=str, default="simple", help="name of the scenario script")
+    parser.add_argument("--scenario", type=str, default="simple-spread", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=25, help="maximum episode length")
     parser.add_argument("--num-episodes", type=int, default=60000, help="number of episodes")
     # parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
@@ -83,7 +83,7 @@ def run(arglist):
 
     t_1.tic()
     # load scenario from script
-    scenario_name = 'simple_spread'
+    scenario_name = arglist.scenario
     scenario = scenarios.load(scenario_name + ".py").Scenario()
 
     # create world
@@ -231,6 +231,7 @@ if __name__ == '__main__':
         arglist.learning_rate = 1e-3
         arglist.tau = 0.001
         arglist.warmup_steps = 200
+        print(arglist.display)
 
         run(arglist)
         t_run.toc()

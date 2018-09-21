@@ -1,7 +1,7 @@
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
-from rl2.model.ac_network import ActorNetwork, CriticNetwork
-from rl2.agent.ddpg import Trainer
+from rl2.model.ac_network_bicnet import ActorNetwork, CriticNetwork
+from rl2.agent.ddpg_bicnet import Trainer
 import numpy as np
 import torch
 import time
@@ -28,7 +28,7 @@ def parse_args():
     # Core training parameters
     # parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=1024, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=128, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=64, help="number of units in the mlp")
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
@@ -96,8 +96,8 @@ def run(arglist):
     env.discrete_action_input = True
     env.discrete_action_space = False
 
-    actor = ActorNetwork(input_dim=18, out_dim=5)
-    critic = CriticNetwork(input_dim=18 + 5, out_dim=1)
+    actor = ActorNetwork(input_dim=10, out_dim=5)
+    critic = CriticNetwork(input_dim=10 + 5, out_dim=env.n)
     memory = MemoryBuffer(size=1000000)
     agent = Trainer(actor, critic, memory)
 
@@ -142,7 +142,9 @@ def run(arglist):
         new_obs, rewards, done, info = env.step(actions)
         t_5.toc()
         rewards = agent.process_reward(rewards)
-        rewards = np.mean(rewards)
+        # rewards = np.mean(rewards)
+        # if rewards[0] != rewards[1] or  rewards[1] != rewards[2]:
+        #     print('different!!!!!!!!!!!!!!!!!!!!')
         episode_step += 1
         done = all(done)
         terminal = (episode_step >= arglist.max_episode_len)
@@ -153,8 +155,8 @@ def run(arglist):
         obs = new_obs
         # episode_rewards.append(rewards)
 
-        for i, rew in enumerate([rewards] * env.n):
-            episode_rewards[-1] += rew
+        for i, rew in enumerate(rewards):
+            episode_rewards[-1] += rew*3
             agent_rewards[i][-1] += rew
 
         # # for displaying learned policies
@@ -231,7 +233,6 @@ if __name__ == '__main__':
         arglist.learning_rate = 1e-3
         arglist.tau = 0.001
         arglist.warmup_steps = 200
-        print(arglist.display)
 
         run(arglist)
         t_run.toc()

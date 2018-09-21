@@ -83,8 +83,8 @@ class CriticNetwork(nn.Module):
         self.lstm = nn.LSTM(64, 64,
                             num_layers=1,
                             batch_first=True,
-                            bidirectional=False)
-        self.dense2 = nn.Linear(64, out_dim)
+                            bidirectional=True)
+        self.dense2 = nn.Linear(128, out_dim)
 
     def forward(self, obs, action):
         """
@@ -96,6 +96,7 @@ class CriticNetwork(nn.Module):
         obs_act = torch.cat((obs.to(device), action.to(device)), dim=-1)
         out = F.relu(self.dense1(obs_act))
         out, _ = self.lstm(out, None)
+        # out = F.relu(out[:, -1, 0:64] + out[:, -1, 64:128])
         out = F.relu(out[:, -1, :])
         out = self.dense2(out)
         return out
