@@ -29,6 +29,7 @@ for s in range(len(keys)):
             if len(combination) != 0:
                 print(np.concatenate(combination).tolist())
                 # --scenario simple_spread --batch-size 128 --num-episodes 25000 --exp-name test --save-rate 1
-                subargs = [sys.executable, 'run_bicnet_simple_spread.py', '--batch-size', '128',
-                           '--num-episodes', '100000', '--save-rate', '1'] + np.concatenate(combination).tolist()
+                subargs = [sys.executable, 'run_bicnet_simple_spread.py', '--scenario',
+                           'simple_spread_local_observation_bicnet', '--batch-size', '128',
+                           '--num-episodes', '60000', '--save-rate', '1'] + np.concatenate(combination).tolist()
                 subprocess.call(subargs, shell=True)

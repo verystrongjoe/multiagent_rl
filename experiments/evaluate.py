@@ -5,7 +5,7 @@ save_rate = 1000
 
 for i in range(5):
 
-    with open('test-proposed-'+str(i)+'0_rewards.pkl', 'rb') as pickle_file:
+    with open('proposed\\test-proposed-'+str(i)+'0_rewards.pkl', 'rb') as pickle_file:
         episode_rewards = pickle.load(pickle_file)
         len_episode_rewards = len(episode_rewards)
         print('len of episode rewards : {}'.format(len_episode_rewards))
