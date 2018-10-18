@@ -1,15 +1,23 @@
+"""
+decided to create two lstm version of existing proposed model with model-based architecture
+
+1. like DQN, I will stack 4 frames for model to recognize temporal observation
+2. episodic lstm policy
+
+"""
+
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
-from rl.model.ac_network_model import ActorNetwork, CriticNetwork
-from rl.agent.model_ddpg import Trainer
+from rl2.model.ac_network_model import ActorNetwork, CriticNetwork
+from rl2.agent.model_ddpg import Trainer
 import numpy as np
 import torch
 import time
-from rl import arglist
+from rl2 import arglist
 import pickle
-from rl.replay_buffer import MemoryBuffer
+from rl2.replay_buffer import SequentialMemory
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
-
+from collections import deque
 
 def observation(agent, world):
     # get positions of all entities in this agent's reference frame
@@ -35,7 +43,7 @@ def run(cnt):
     world = scenario.make_world()
 
     # create multiagent environment
-    env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+    env = MultiAgentEnv(scenario_name, world, scenario.reset_world, scenario.reward, scenario.observation)
     print('observation shape: ', env.observation_space)
     print('action shape: ', env.action_space)
     env.discrete_action_input = True
@@ -43,7 +51,7 @@ def run(cnt):
 
     actor = ActorNetwork(input_dim=10, out_dim=5)
     critic = CriticNetwork(input_dim=10 + 5, out_dim=1)
-    memory = MemoryBuffer(size=1000000)
+    memory = SequentialMemory(limit=1000000, window_length=4)
     agent = Trainer(actor, critic, memory)
 
     # def run():
@@ -66,11 +74,15 @@ def run(cnt):
     verbose_episode = True
     t_start = time.time()
 
+    recent_obs = deque(maxlen=4)
+
     print('Starting iterations...')
     while True:
+
         # get action
         obs = agent.process_obs(obs)
-        actions = agent.get_exploration_action(obs)
+        recent_obs.append(obs)
+        actions = agent.get_exploration_action(recent_obs)
         actions = agent.process_action(actions)
 
         # environment step
@@ -84,7 +96,7 @@ def run(cnt):
         # collect experience
         # obs, actions, rewards, new_obs, done
         actions = agent.to_onehot(actions)
-        agent.memory.add(obs, actions, rewards, agent.process_obs(new_obs), terminal)
+        agent.memory.append(obs, actions, rewards, terminal)
         obs = new_obs
         # episode_rewards.append(rewards)
         rewards = rewards.item()
@@ -105,6 +117,7 @@ def run(cnt):
             nb_episode += 1
             episode_rewards.append(0)
             terminal_reward.append(np.mean(rewards))
+            recent_obs = deque(maxlen=4)
 
         # increment global step counter
         train_step += 1

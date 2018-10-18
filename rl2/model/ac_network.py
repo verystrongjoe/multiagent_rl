@@ -41,22 +41,20 @@ class ActorNetwork(nn.Module):
         self.bilstm = nn.LSTM(64, 32, num_layers=1,
                               batch_first=True, bidirectional=True)
         self.dense2 = TimeDistributed(nn.Linear(64, out_dim))
-        self.dense3 = TimeDistributed(nn.Linear(64, input_dim))
 
     def forward(self, obs):
         """
         Inputs:
-            X (PyTorch Matrix): Batch eof observations
+            X (PyTorch Matrix): Batch of observations
         Outputs:
-            out (PyTorch Matrix): policy, next_state
+            out (PyTorch Matrix): Output of network (actions, values, etc)
         """
-        hid = F.relu(self.dense1(obs))
-        hid, _ = self.bilstm(hid, None)
-        hid = F.relu(hid)
-        policy = self.dense2(hid)
-        policy = nn.Softmax(dim=-1)(policy)
-        next_state = self.dense3(hid)
-        return policy, next_state
+        out = F.relu(self.dense1(obs))
+        out, _ = self.bilstm(out, None)
+        out = F.relu(out)
+        out = self.dense2(out)
+        out = nn.Softmax(dim=-1)(out)
+        return out
 
 
 class CriticNetwork(nn.Module):
@@ -77,26 +75,21 @@ class CriticNetwork(nn.Module):
 
         self.nonlin = F.relu
         self.dense1 = TimeDistributed(nn.Linear(input_dim, 64))
-
         # return sequence is not exist in pytorch. Instead, output will return with first dimension for sequences.
         self.lstm = nn.LSTM(64, 64, num_layers=1,
                             batch_first=True, bidirectional=False)
-
         self.dense2 = nn.Linear(64, out_dim)
-        self.dense3 = nn.Linear(64, out_dim)
 
     def forward(self, obs, action):
         """
         Inputs:
             X (PyTorch Matrix): Batch of observations
         Outputs:
-            out (PyTorch Matrix): Q-function
-            out (PyTorch Matrix): reward
+            out (PyTorch Matrix): Output of network (actions, values, etc)
         """
         obs_act = torch.cat((obs, action), dim=-1)
-        hid = F.relu(self.dense1(obs_act))
-        hid, _ = self.lstm(hid, None)
-        hid = F.relu(hid[:, -1, :])
-        Q = self.dense2(hid)
-        r = self.dense3(hid)
-        return Q, r
+        out = F.relu(self.dense1(obs_act))
+        out, _ = self.lstm(out, None)
+        out = F.relu(out[:, -1, :])
+        out = self.dense2(out)
+        return out
