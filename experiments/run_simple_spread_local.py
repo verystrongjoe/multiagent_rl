@@ -1,13 +1,14 @@
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
-from rl.model.ac_network_model import ActorNetwork, CriticNetwork
-from rl.agent.model_ddpg import Trainer
+from rl2.model.ac_network_model import ActorNetwork, CriticNetwork
+from rl2.agent.model_ddpg import Trainer
 import numpy as np
 import torch
 import time
-from rl import arglist
+from rl2 import arglist
 import pickle
-from rl.replay_buffer import MemoryBuffer
+from rl2.replay_buffer import EpisodicMemory
+
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
@@ -35,7 +36,7 @@ def run(cnt):
     world = scenario.make_world()
 
     # create multiagent environment
-    env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+    env = MultiAgentEnv(scenario_name, world, scenario.reset_world, scenario.reward, scenario.observation)
     print('observation shape: ', env.observation_space)
     print('action shape: ', env.action_space)
     env.discrete_action_input = True
@@ -43,7 +44,8 @@ def run(cnt):
 
     actor = ActorNetwork(input_dim=10, out_dim=5)
     critic = CriticNetwork(input_dim=10 + 5, out_dim=1)
-    memory = MemoryBuffer(size=1000000)
+
+    memory = EpisodicMemory(n_max_episode=10000)
     agent = Trainer(actor, critic, memory)
 
     # def run():
@@ -61,6 +63,7 @@ def run(cnt):
     episode_step = 0
     train_step = 0
     nb_episode = 0
+    last_episode_train_step = 0
 
     verbose_step = False
     verbose_episode = True
@@ -84,7 +87,7 @@ def run(cnt):
         # collect experience
         # obs, actions, rewards, new_obs, done
         actions = agent.to_onehot(actions)
-        agent.memory.add(obs, actions, rewards, agent.process_obs(new_obs), terminal)
+        agent.memory.append(obs, actions, rewards, terminal)
         obs = new_obs
         # episode_rewards.append(rewards)
         rewards = rewards.item()
@@ -101,6 +104,8 @@ def run(cnt):
 
         if terminal:
             obs = env.reset()
+            agent.memory.append_episode(train_step, episode_step)
+            # last_episode_train_step = train_step
             episode_step = 0
             nb_episode += 1
             episode_rewards.append(0)
@@ -111,8 +116,8 @@ def run(cnt):
 
         # update all trainers, if not in display or benchmark mode
         loss = [np.nan, np.nan]
-        if (train_step > arglist.warmup_steps) and (train_step % 100 == 0):
-            loss = agent.optimize()
+        if train_step > 200 and nb_episode % 2 == 0:
+            loss = agent.optimize(nb_episode)
             loss = [loss[0].data.item(), loss[1].data.item()]
 
         episode_loss.append(loss)
