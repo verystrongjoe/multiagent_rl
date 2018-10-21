@@ -116,7 +116,7 @@ def run(cnt):
 
         # update all trainers, if not in display or benchmark mode
         loss = [np.nan, np.nan]
-        if train_step > 200 and nb_episode % 2 == 0:
+        if terminal and nb_episode % 1 == 0:
             loss = agent.optimize(nb_episode)
             loss = [loss[0].data.item(), loss[1].data.item()]
 

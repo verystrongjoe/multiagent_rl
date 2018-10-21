@@ -37,13 +37,27 @@ class ActorNetwork(nn.Module):
 
         self.nonlin = F.relu
         self.dense1 = TimeDistributed(nn.Linear(input_dim, 64))
+        self.lstm_rdpg = TimeDistributed(nn.LSTMCell(64,64))
+
         # return sequence is not exist in pytorch. Instead, output will return with first dimension for sequences.
         self.bilstm = nn.LSTM(64, 32, num_layers=1,
                               batch_first=True, bidirectional=True)
         self.dense2 = TimeDistributed(nn.Linear(64, out_dim))
         self.dense3 = TimeDistributed(nn.Linear(64, input_dim))
 
-    def forward(self, obs):
+        self.cx = torch.zeros((3, 64), requires_grad=False)
+        self.hx = torch.zeros((3, 64), requires_grad=False)
+
+    def reset_lstm_hidden_state(self, done=True):
+        if done == True:
+            self.cx = torch.zeros((3, 64),requires_grad=False)
+            self.hx = torch.zeros((3, 64),requires_grad=False)
+        else:
+            self.hx = torch.zeros(self.hx.data,requires_grad=False)
+            self.cx = torch.zeros(self.cx.data,requires_grad=False)
+
+
+    def forward(self, obs, hidden_states=None):
         """
         Inputs:
             X (PyTorch Matrix): Batch of observations
@@ -51,12 +65,23 @@ class ActorNetwork(nn.Module):
             out (PyTorch Matrix): policy, next_state
         """
         hid = F.relu(self.dense1(obs))
+
+        if hidden_states == None:
+            hx, cx = self.lstm_rdpg(hid, (self.hx, self.cx))
+            self.hx = hx
+            self.cx = cx
+        else:
+            hx, cx = self.lstm(hid, hidden_states)
+
+        # (hx, cx) = self.lstm_rdpg(hid, (hx,cx))
+
+        hid = hx
         hid, _ = self.bilstm(hid, None)
         hid = F.relu(hid)
         policy = self.dense2(hid)
         policy = nn.Softmax(dim=-1)(policy)
         next_state = self.dense3(hid)
-        return policy, next_state
+        return policy, next_state, (hx, cx)
 
 
 class CriticNetwork(nn.Module):
@@ -77,13 +102,15 @@ class CriticNetwork(nn.Module):
 
         self.nonlin = F.relu
         self.dense1 = TimeDistributed(nn.Linear(input_dim, 64))
+        self.lstm_rdpg = TimeDistributed(nn.LSTMCell(64,64))
+
         # return sequence is not exist in pytorch. Instead, output will return with first dimension for sequences.
         self.lstm = nn.LSTM(64, 64, num_layers=1,
                             batch_first=True, bidirectional=False)
         self.dense2 = nn.Linear(64, out_dim)
         self.dense3 = nn.Linear(64, out_dim)
 
-    def forward(self, obs, action):
+    def forward(self, obs):
         """
         Inputs:
             X (PyTorch Matrix): Batch of observations
@@ -91,10 +118,13 @@ class CriticNetwork(nn.Module):
             out (PyTorch Matrix): Q-function
             out (PyTorch Matrix): reward
         """
+        obs, action, (hx, cx) = obs
         obs_act = torch.cat((obs, action), dim=-1)
         hid = F.relu(self.dense1(obs_act))
+        (hx, cx) = self.lstm_rdpg(hid)
+        hid = hx
         hid, _ = self.lstm(hid, None)
         hid = F.relu(hid[:, -1, :])
         Q = self.dense2(hid)
         r = self.dense3(hid)
-        return Q, r
+        return Q, r, (hx, cx)
