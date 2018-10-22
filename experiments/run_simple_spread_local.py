@@ -69,6 +69,8 @@ def run(cnt):
     verbose_episode = True
     t_start = time.time()
 
+    N = 2  # minibatch size of N episode for update
+
     print('Starting iterations...')
     while True:
         # get action
@@ -110,14 +112,15 @@ def run(cnt):
             nb_episode += 1
             episode_rewards.append(0)
             terminal_reward.append(np.mean(rewards))
+            actor.reset_lstm_hidden_state(True) # todo : clear hidden state of actor
 
         # increment global step counter
         train_step += 1
 
         # update all trainers, if not in display or benchmark mode
         loss = [np.nan, np.nan]
-        if terminal and nb_episode % 1 == 0:
-            loss = agent.optimize(nb_episode)
+        if train_step > 1000 and terminal and nb_episode % N == 0:
+            loss = agent.optimize(nb_episode, N)
             loss = [loss[0].data.item(), loss[1].data.item()]
 
         episode_loss.append(loss)

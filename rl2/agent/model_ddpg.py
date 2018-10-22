@@ -105,12 +105,12 @@ class Trainer:
         """
         # state = np.expand_dims(state, axis=0)
         state = state.to(self.device)
-        action, _ = self.actor.forward(state)
+        action, _, _ = self.actor.forward(state)  # todo : actor use its own hx/cx, so that it needs to initiate every first step in episode.
         action = action.detach()
         new_action = action.data.cpu().numpy()  # + (self.noise.sample() * self.action_lim)
         return new_action
 
-    def optimize(self, nb_episode):
+    def optimize(self, nb_episode, sample_size):
         """
         Samples a random batch from replay memory and performs optimization
 
@@ -126,15 +126,21 @@ class Trainer:
         4. soft update target two networks
         :return:
         """
-        episode_data = self.memory.sample(arglist.batch_size, nb_episode)
+        episode_data = self.memory.sample(sample_size, nb_episode)
 
         policy_loss_total = 0
         value_loss_total = 0
 
+        l_s1 = []
+        l_a1 = []
+        l_r1 = []
+        l_s2 = []
+        l_d  = []
+
         for e in episode_data:
 
-            target_cx = torch.zeros((64, 64),requires_grad=False)
-            target_hx = torch.zeros((64, 64),requires_grad=False)
+            target_cx = torch.zeros((64, 64), requires_grad=False)
+            target_hx = torch.zeros((64, 64), requires_grad=False)
 
             cx = torch.zeros((64, 64), requires_grad=True)
             hx = torch.zeros((64, 64), requires_grad=True)
@@ -155,39 +161,53 @@ class Trainer:
             s2 = s2.to(self.device)
             d = d.to(self.device)
 
-            # Use target actor exploitation policy here for loss evaluation
-            a2, _, (target_x, target_y) = self.target_actor.forward(s2)
-            a2 = a2.detach()
-            q_next, _ = self.target_critic.forward(s2, a2)
-            q_next = q_next.detach()
-            q_next = torch.squeeze(q_next)
-            # y_exp = r + gamma*Q'( s2, pi'(s2))
-            y_expected = r1 + GAMMA * q_next * (1. - d)
+            l_s1.append(s1.squeeze_())
+            l_a1.append(a1.squeeze_())
+            l_r1.append(r1.squeeze_())
+            l_s2.append(s2.squeeze_())
+            l_d.append(d.squeeze_())
 
-            # ---------------------- calculate gradient of critic network ----------------------
-            # y_pred = Q( s1, a1)
-            y_predicted, pred_r1,(hx, cx) = self.critic.forward(s1, a1, (hx, cx))
-            y_predicted = torch.squeeze(y_predicted)
-            pred_r1 = torch.squeeze(pred_r1)
 
-            # compute critic loss, and update the critic
-            loss_critic = F.smooth_l1_loss(y_predicted, y_expected)
-            loss_critic += F.smooth_l1_loss(pred_r1, r1) * 0.1
+        # stack
+        s1 = torch.stack(l_s1, 1)
+        a1 = torch.stack(l_a1, 1)
+        r1 = torch.stack(l_r1, 1)
+        s2 = torch.stack(l_s2, 1)
+        d = torch.stack(l_d, 1)
 
-            value_loss_total += loss_critic
+        # Use target actor exploitation policy here for loss evaluation
+        a2, _, (target_x, target_y) = self.target_actor.forward(s2)
+        a2 = a2.detach()
+        q_next, _ = self.target_critic.forward(s2, a2)
+        q_next = q_next.detach()
+        q_next = torch.squeeze(q_next)
+        # y_exp = r + gamma*Q'( s2, pi'(s2))
+        y_expected = r1 + GAMMA * q_next * (1. - d)
 
-            # ---------------------- calculate gradient of actor network ----------------------
-            pred_a1, pred_s2, (hx, cx) = self.actor.forward(s1, (hx, cx))
-            entropy = torch.sum(pred_a1 * torch.log(pred_a1), dim=-1).mean()
-            l2_reg = torch.cuda.FloatTensor(1)
-            for W in self.actor.parameters():
-                l2_reg = l2_reg + W.norm(2)
+        # ---------------------- calculate gradient of critic network ----------------------
+        # y_pred = Q( s1, a1)
+        y_predicted, pred_r1,(hx, cx) = self.critic.forward(s1, a1, (hx, cx))
+        y_predicted = torch.squeeze(y_predicted)
+        pred_r1 = torch.squeeze(pred_r1)
 
-            Q, _ = self.critic.forward(s1, pred_a1)
-            loss_actor = -1 * torch.sum(Q)
-            loss_actor += entropy * 0.05
-            loss_actor += torch.squeeze(l2_reg) * 0.001
-            loss_actor += F.smooth_l1_loss(pred_s2, s2) * 0.1
+        # compute critic loss, and update the critic
+        loss_critic = F.smooth_l1_loss(y_predicted, y_expected)
+        loss_critic += F.smooth_l1_loss(pred_r1, r1) * 0.1
+
+        value_loss_total += loss_critic
+
+        # ---------------------- calculate gradient of actor network ----------------------
+        pred_a1, pred_s2, (hx, cx) = self.actor.forward(s1, (hx, cx))
+        entropy = torch.sum(pred_a1 * torch.log(pred_a1), dim=-1).mean()
+        l2_reg = torch.cuda.FloatTensor(1)
+        for W in self.actor.parameters():
+            l2_reg = l2_reg + W.norm(2)
+
+        Q, _ = self.critic.forward(s1, pred_a1)
+        loss_actor = -1 * torch.sum(Q)
+        loss_actor += entropy * 0.05
+        loss_actor += torch.squeeze(l2_reg) * 0.001
+        loss_actor += F.smooth_l1_loss(pred_s2, s2) * 0.1
 
         # ---------------------- optimize critic ----------------------
         self.critic_optimizer.zero_grad()
