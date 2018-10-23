@@ -205,7 +205,7 @@ class SequentialMemory(Memory):
         self.terminals = RingBuffer(limit)
         self.observations = RingBuffer(limit)
 
-    def sample(self, batch_size, batch_idxs=None):
+    def sample(self, batch_size, batch_idxs):
         """Return a randomized batch of experiences
         # Argument
             batch_size (int): Size of the all batch
@@ -317,6 +317,110 @@ class SequentialMemory(Memory):
 
 
 
+
+
+"""
+replace sample function to select sample in forehead
+"""
+class SampleForeheadSequentialMemory(Memory):
+    def __init__(self, limit, **kwargs):
+        super(SampleForeheadSequentialMemory, self).__init__(**kwargs)
+
+        self.limit = limit
+
+        # Do not use deque to implement the memory. This data structure may seem convenient but
+        # it is way too slow on random access. Instead, we use our own ring buffer implementation.
+        self.actions = RingBuffer(limit)
+        self.rewards = RingBuffer(limit)
+        self.terminals = RingBuffer(limit)
+        self.observations = RingBuffer(limit)
+
+    def sample(self, batch_size, batch_idxs=None):
+        assert self.nb_entries >= self.window_length + 2, 'not enough entries in the memory'
+
+        assert np.max(batch_idxs) + self.window_length < self.nb_entries
+        assert len(batch_idxs) == batch_size
+
+        # Create experiences
+        experiences = []
+        for idx in batch_idxs:
+            state0 = [self.observations[idx]]
+            last_idx = idx
+            for offset in range(1, self.window_length): # todo :
+                current_idx = idx + offset
+                assert current_idx >= 1
+                current_terminal = self.terminals[current_idx]
+                if current_terminal and not self.ignore_episode_boundaries:
+                    # The previously handled observation was terminal, don't add the current one.
+                    # Otherwise we would leak into a different episode.
+                    last_idx = current_idx
+                    break
+                state0.append(self.observations[current_idx])
+            while len(state0) < self.window_length:
+                state0.append(zeroed_observation(self.observations[last_idx]))
+
+            # action = self.actions[idx - 1]
+            # reward = self.rewards[idx - 1]
+            # terminal1 = self.terminals[idx - 1]
+
+            action = [self.actions[i] for i in range(idx, idx + self.window_length)]
+            reward = [self.rewards[i] for i in range(idx, idx + self.window_length)]
+            terminal1 = [self.terminals[i] for i in range(idx, idx + self.window_length)]
+
+            # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
+            # to the right. Again, we need to be careful to not include an observation from the next
+            # episode if the last state is terminal.
+            state1 = [torch.clone(x) for x in state0[1:]]
+            state1.append(self.observations[idx])
+
+            assert len(state0) == self.window_length
+            assert len(state1) == len(state0)
+            experiences.append(Experience(state0=state0, action=action, reward=reward,
+                                          state1=state1, terminal1=terminal1))
+        assert len(experiences) == batch_size
+        return experiences
+
+    def append(self, observation, action, reward, terminal, training=True):
+        """Append an observation to the memory
+        # Argument
+            observation (dict): Observation returned by environment
+            action (int): Action taken to obtain this observation
+            reward (float): Reward obtained by taking this action
+            terminal (boolean): Is the state terminal
+        """
+        super(SampleForeheadSequentialMemory, self).append(observation, action, reward, terminal, training=training)
+
+        # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
+        # and weather the next state is `terminal` or not.
+        if training:
+            self.observations.append(observation)
+            self.actions.append(action)
+            self.rewards.append(reward)
+            self.terminals.append(terminal)
+
+    @property
+    def nb_entries(self):
+        """Return number of observations
+        # Returns
+            Number of observations
+        """
+        return len(self.observations)
+
+    def get_config(self):
+        """Return configurations of SequentialMemory
+        # Returns
+            Dict of config
+        """
+        config = super(SequentialMemory, self).get_config()
+        config['limit'] = self.limit
+        return config
+
+
+
+
+
+
+
 class EpisodicMemory(Memory):
     def __init__(self, n_max_episode=10000, n_max_episode_len=None, memory_for_steps=None):
         self.n_max_episode = n_max_episode
@@ -324,7 +428,7 @@ class EpisodicMemory(Memory):
         self.memory_for_steps = memory_for_steps
 
         if memory_for_steps is None:
-            self.memory_for_steps = SequentialMemory(limit=3000000, window_length=1)
+            self.memory_for_steps = SampleForeheadSequentialMemory(limit=3000000, window_length=1)
         self.memory_for_episode = deque(maxlen=n_max_episode)
 
     def append_episode(self, e_idx, len):

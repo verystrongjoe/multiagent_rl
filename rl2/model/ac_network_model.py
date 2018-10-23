@@ -33,8 +33,9 @@ class TimeDistributed(nn.Module):
             elif len(x.size()) == 4:  # sequence
                 # hx = hx.contiguous().view(3, hx.size()[1])
                 # cx = cx.contiguous().view(3, cx.size()[1])
-                hx = hx.contiguous().view(1, 6, hx.size()[2])
-                cx = cx.contiguous().view(1, 6, cx.size()[2])
+                hx = hx.contiguous().view(1, 6, 64)
+                cx = cx.contiguous().view(1, 6, 64)
+
         elif self.is_lstm:
             hx = torch.zeros((1, 6, 64), requires_grad=False)
             cx = torch.zeros((1, 6, 64), requires_grad=False)
@@ -147,6 +148,9 @@ class ActorNetwork(nn.Module):
         elif hidden_states == None and len(obs.size()) == 4:
             output, (hx,cx) = self.lstm_sequence(hid, (self.hx2, self.cx2))
             hid = output
+        elif hidden_states is not None and len(obs.size()) == 4:
+            output, (hx, cx) = self.lstm_sequence(hid, hidden_states)
+            hid = output
 
         hid, _ = self.bilstm(hid, None)
         hid = F.relu(hid)
@@ -190,14 +194,18 @@ class CriticNetwork(nn.Module):
             out (PyTorch Matrix): Q-function
             out (PyTorch Matrix): reward
         """
-        obs = obs.contiguous().view(obs.size()[0], obs.size()[1]*obs.size()[2], obs.size()[3])
+        #obs = obs.contiguous().view(obs.size()[0], obs.size()[1]*obs.size()[2], obs.size()[3])
+        action = action.contiguous().view(obs.size()[0], obs.size()[1], obs.size()[2], 5)
 
         obs_act = torch.cat((obs, action), dim=-1)
         hid = F.relu(self.dense1(obs_act))
         output, (hx, cx) = self.lstm_sequence(hid)
         hid = output
         hid, _ = self.lstm(hid, None)
-        hid = F.relu(hid[:, -1, :])
+
+        hid = hid.contiguous().view(obs.size()[0], obs.size()[1], obs.size()[2], 64)
+
+        hid = F.relu(hid[:, :, -1, :])
         Q = self.dense2(hid)
         r = self.dense3(hid)
         return Q, r #, (hx, cx)

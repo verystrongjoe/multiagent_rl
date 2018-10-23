@@ -186,7 +186,7 @@ class Trainer:
 
         # ---------------------- calculate gradient of critic network ----------------------
         # y_pred = Q( s1, a1)
-        y_predicted, pred_r1,(hx, cx) = self.critic.forward(s1, a1, (hx, cx))
+        y_predicted, pred_r1 = self.critic.forward(s1, a1)
         y_predicted = torch.squeeze(y_predicted)
         pred_r1 = torch.squeeze(pred_r1)
 
@@ -197,7 +197,7 @@ class Trainer:
         value_loss_total += loss_critic
 
         # ---------------------- calculate gradient of actor network ----------------------
-        pred_a1, pred_s2, (hx, cx) = self.actor.forward(s1, (hx, cx))
+        pred_a1, pred_s2, (hx, cx) = self.actor.forward(s1)
         entropy = torch.sum(pred_a1 * torch.log(pred_a1), dim=-1).mean()
         l2_reg = torch.cuda.FloatTensor(1)
         for W in self.actor.parameters():
@@ -207,6 +207,8 @@ class Trainer:
         loss_actor = -1 * torch.sum(Q)
         loss_actor += entropy * 0.05
         loss_actor += torch.squeeze(l2_reg) * 0.001
+        #pred_s2 = pred_s2.contiguous().view(s, t, n, pred_s2.size(2)))
+        pred_s2 = pred_s2.contiguous().view(25,2,3,10)
         loss_actor += F.smooth_l1_loss(pred_s2, s2) * 0.1
 
         # ---------------------- optimize critic ----------------------
@@ -219,7 +221,6 @@ class Trainer:
         loss_actor.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
         self.actor_optimizer.step()
-
 
         self.soft_update(self.target_actor, self.actor, arglist.tau)
         self.soft_update(self.target_critic, self.critic, arglist.tau)
