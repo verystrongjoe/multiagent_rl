@@ -1,13 +1,13 @@
 from multiagent.environment import MultiAgentEnv
 import multiagent.scenarios as scenarios
-from rl.model.ac_network_model_rdpg import ActorNetwork, CriticNetwork
-from rl.agent.model_rdpg import Trainer
+from rl2.model.ac_network_model_rdpg import ActorNetwork, CriticNetwork
+from rl2.agent.model_rdpg import Trainer
 import numpy as np
 import torch
 import time
-from rl import arglist
+from rl2 import arglist
 import pickle
-from rl.replay_buffer import EpisodicMemory
+from rl2.replay_buffer import EpisodicMemory
 from copy import deepcopy
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
@@ -36,7 +36,7 @@ def run(cnt):
     world = scenario.make_world()
 
     # create multiagent environment
-    env = MultiAgentEnv(world, scenario.reset_world, scenario.reward, scenario.observation)
+    env = MultiAgentEnv(scenario_name, world, scenario.reset_world, scenario.reward, scenario.observation)
     print('observation shape: ', env.observation_space)
     print('action shape: ', env.action_space)
     env.discrete_action_input = True
