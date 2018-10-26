@@ -98,12 +98,15 @@ class ActorNetwork(nn.Module):
         """
         # obs: (time, batch, agent, feature)
         hid = F.relu(self.dense1(obs))
+
         hid, hcTime = self.lstmTime(hid, h0=self.hState)
         hid = F.relu(hid)
+
         hid = hid.permute(2, 1, 0, 3)
         hid, hcAgent = self.bilstmAgent(hid, h0=None)
         hid = F.relu(hid)
         hid = hid.permute(2, 1, 0, 3)
+
         policy = self.dense2(hid)
         policy = nn.Softmax(dim=-1)(policy)
         next_state = self.dense3(hid)
@@ -179,10 +182,10 @@ next_state = self.dense3(hid)
 '''
 
 if __name__ == '__main__':
-    actor = ActorNetwork(input_dim=10, out_dim=5)
-    critic = CriticNetwork(input_dim=10 + 5, out_dim=1)
+    actor = ActorNetwork(nb_agents=3, input_dim=10, out_dim=5)
+    critic = CriticNetwork(nb_agents=3, input_dim=10 + 5, out_dim=1)
 
-    s = torch.randn(15, 32, 3, 10)
+    s = torch.randn(15, 32, 3, 10)    # batch, trajectories, agent, observation
     pred_actor = actor.forward(s)
     print(pred_actor[0].size())
     print(pred_actor[1].size())

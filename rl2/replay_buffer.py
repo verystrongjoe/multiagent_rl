@@ -330,10 +330,11 @@ class SequentialMemory(Memory):
 
 
 class EpisodicMemory(Memory):
-    def __init__(self, limit, **kwargs):
+    def __init__(self, limit, n_slice, **kwargs):
         super(EpisodicMemory, self).__init__(**kwargs)
 
         self.limit = limit
+        self.n_slice = n_slice
         self.episodes = RingBuffer(limit)
         self.terminal = False
 
@@ -377,9 +378,12 @@ class EpisodicMemory(Memory):
             assert len(states) == len(actions)
             assert len(states) == len(terminals) - 1
 
+
             # Transform into experiences (to be consistent).
+            import random
             sequence = []
-            for idx in range(len(episode) - 1):
+            start_idx = random.randint(0, len(episode)-self.n_slice-1)
+            for idx in range(start_idx, start_idx+self.n_slice):
                 state0 = states[idx]
                 state1 = states[idx + 1]
                 reward = rewards[idx]
@@ -388,7 +392,8 @@ class EpisodicMemory(Memory):
                 experience = Experience(state0=state0, state1=state1, reward=reward, action=action, terminal1=terminal1)
                 sequence.append(experience)
             sequences.append(sequence)
-            assert len(sequence) == len(episode) - 1
+            # assert len(sequence) == len(episode) - 1
+            assert len(sequence) == self.n_slice
         assert len(sequences) == batch_size
         return sequences
 
